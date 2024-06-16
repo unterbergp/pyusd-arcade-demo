@@ -12,11 +12,12 @@ const PYUSD_TOKEN_MINT = 'CXk2AMBfi3TwaEL2468s6zP8xq9NxTXjp9gjMgzeUynM';
 const RECIPIENT_ADDRESS = 'ARFwpM41PsUudu1HQE7i1HbbP6nkDAnKYRc77KQMS18e';
 const TOKEN2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
+// Temporary in-memory storage for credits
+let creditsStore = {};
+
 app.set('view engine', 'ejs');
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
-
-let userCredits = {};
 
 app.get('/', (req, res) => {
     res.render('index');
@@ -24,6 +25,7 @@ app.get('/', (req, res) => {
 
 app.get('/wallet', async (req, res) => {
     const walletAddress = req.query.address;
+    const jsonResponse = req.query.json === 'true';
     if (!walletAddress) {
         return res.status(400).send('Wallet address is required');
     }
@@ -40,26 +42,20 @@ app.get('/wallet', async (req, res) => {
             pyusdBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
         }
 
-        if (!(walletAddress in userCredits)) {
-            userCredits[walletAddress] = 0;
-        }
+        const credits = creditsStore[walletAddress] || 0;
 
-        const credits = userCredits[walletAddress];
-
-        if (req.query.json === 'true') {
-            return res.json({
-                balanceInSol,
-                pyusdBalance,
-                credits
-            });
-        }
-
-        res.render('wallet', {
+        const responseData = {
             walletAddress,
             balanceInSol,
             pyusdBalance,
             credits
-        });
+        };
+
+        if (jsonResponse) {
+            return res.json(responseData);
+        }
+
+        res.render('wallet', responseData);
     } catch (err) {
         console.error('Error fetching wallet info:', err);
         res.status(500).send('Error fetching wallet info');
@@ -136,7 +132,7 @@ app.post('/create-transaction', async (req, res) => {
                 mintPublicKey,
                 toTokenAccountAddress,
                 fromPublicKey,
-                0.25 * 10 ** 6, // Assuming 6 decimal places for PYUSD token, adjust if different
+                0.25 * 10 ** 6, // Adjusted for 6 decimal places for PYUSD token
                 6, // Decimal places
                 [],
                 TOKEN2022_PROGRAM_ID
@@ -161,11 +157,6 @@ app.post('/send-transaction', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Signed transaction is required' });
     }
 
-    if (!walletAddress) {
-        console.error('Wallet address is required');
-        return res.status(400).json({ success: false, error: 'Wallet address is required' });
-    }
-
     try {
         console.log('Deserializing signed transaction...');
         const transaction = Transaction.from(Buffer.from(signedTransaction, 'base64'));
@@ -176,13 +167,12 @@ app.post('/send-transaction', async (req, res) => {
         console.log('Confirming transaction...');
         await connection.confirmTransaction(signature);
 
-        // Increment credits
-        if (!(walletAddress in userCredits)) {
-            userCredits[walletAddress] = 0;
-        }
-        userCredits[walletAddress] += 1;
+        // Update credits here as needed
+        let credits = creditsStore[walletAddress] || 0;
+        credits += 1; // Each 0.25 token transfer adds 1 credit
+        creditsStore[walletAddress] = credits;
 
-        res.json({ success: true, signature });
+        res.json({ success: true, signature, credits });
     } catch (err) {
         console.error('Error sending transaction:', err);
 
@@ -194,22 +184,30 @@ app.post('/send-transaction', async (req, res) => {
     }
 });
 
-app.post('/deduct-credits', (req, res) => {
+app.post('/deduct-credits', async (req, res) => {
     const { walletAddress } = req.body;
     if (!walletAddress) {
+        console.error('Wallet address is required');
         return res.status(400).json({ success: false, error: 'Wallet address is required' });
     }
 
-    const credits = userCredits[walletAddress] || 0;
+    try {
+        // Update credits here as needed
+        let credits = creditsStore[walletAddress] || 0;
+        if (credits < 2) {
+            return res.status(400).json({ success: false, error: 'Insufficient credits' });
+        }
 
-    if (credits < 2) {
-        return res.status(400).json({ success: false, error: 'Insufficient credits' });
+        credits -= 2; // Deduct 2 credits for playing a game
+        creditsStore[walletAddress] = credits;
+
+        res.json({ success: true, credits });
+    } catch (err) {
+        console.error('Error deducting credits:', err);
+        res.status(500).json({ success: false, error: 'Error deducting credits' });
     }
-
-    userCredits[walletAddress] = credits - 2;
-    res.json({ success: true, credits: userCredits[walletAddress] });
 });
 
-app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Server is running on http://0.0.0.0:${port}`);
 });
