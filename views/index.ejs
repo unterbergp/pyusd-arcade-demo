@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Site</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <nav class="bg-white shadow p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <a href="#" class="text-2xl font-bold">Demo Site</a>
+            </div>
+            <div>
+                <a href="#" class="text-blue-500 hover:underline mx-2">Home</a>
+                <a href="#" class="text-blue-500 hover:underline mx-2">Login</a>
+                <a href="#" class="text-blue-500 hover:underline mx-2">Register</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container mx-auto mt-10">
+        <div class="bg-white p-8 rounded shadow-md text-center">
+            <p class="text-lg mb-4">Pay as you go content - $.50 per click! (Requires $10 in PYUSD to access.)</p>
+            <button id="connect-button" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Login with Wallet</button>
+            <div id="wallet-info" class="mt-4"></div>
+            <button id="buy-access-button" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 mt-4" style="display: none;">Buy Access</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const connectButton = document.getElementById("connect-button");
+            connectButton.addEventListener("click", async function() {
+                if (window.solana && window.solana.isPhantom) {
+                    try {
+                        await window.solana.connect();
+                        const walletAddress = window.solana.publicKey.toString();
+                        window.location.href = `/wallet?address=${walletAddress}`;
+                    } catch (err) {
+                        console.error("Error connecting to Phantom Wallet", err);
+                        const walletInfo = document.getElementById("wallet-info");
+                        walletInfo.innerHTML = '<p class="text-red-500">Error connecting to wallet. Please try again.</p>';
+                    }
+                } else {
+                    alert("Phantom Wallet not found. Please install it.");
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Info</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <!-- Load solanaWeb3 library -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <style>
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #000;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Flexbox styles */
+        .content {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .content .box {
+            flex: 1;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Carousel styles */
+        .carousel {
+            display: flex;
+            overflow: hidden;
+            width: 512px;
+            height: 512px;
+            margin: 20px auto;
+            position: relative;
+        }
+
+        .carousel img {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            margin: auto;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            transition: transform 0.5s ease;
+        }
+
+        .carousel-buttons {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .carousel-button {
+            display: inline-block;
+            margin: 0 5px;
+            padding: 5px 10px;
+            background-color: #ccc;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .carousel-button.active {
+            background-color: #000;
+            color: #fff;
+        }
+
+        .play-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.7);
+            animation: flash 1s infinite;
+            display: none;
+        }
+
+        @keyframes flash {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Styles for the disabled Play Game button */
+        .play-button:disabled {
+            background-color: #f87171; /* Red color */
+            cursor: not-allowed;
+        }
+    </style>
+    <script>
+        let currentImageIndex = 0;
+
+        function showImage(index) {
+            const carousel = document.querySelector('.carousel');
+            const images = carousel.querySelectorAll('img');
+            const totalImages = images.length;
+
+            images.forEach((img, i) => {
+                if (i === index) {
+                    img.style.transform = 'translateX(0)';
+                } else if (i < index) {
+                    img.style.transform = `translateX(-${512 * (index - i)}px)`;
+                } else {
+                    img.style.transform = `translateX(${512 * (i - index)}px)`;
+                }
+            });
+
+            document.querySelectorAll('.carousel-button').forEach((button, i) => {
+                button.classList.toggle('active', i === index);
+            });
+        }
+
+        function nextImage() {
+            const totalImages = document.querySelectorAll('.carousel img').length;
+            currentImageIndex = (currentImageIndex + 1) % totalImages;
+            showImage(currentImageIndex);
+        }
+
+        function prevImage() {
+            const totalImages = document.querySelectorAll('.carousel img').length;
+            currentImageIndex = (currentImageIndex - 1 + totalImages) % totalImages;
+            showImage(currentImageIndex);
+        }
+
+        async function fetchWalletInfo() {
+            const walletAddress = '<%= walletAddress %>';
+            const response = await fetch(`/wallet?address=${walletAddress}&json=true`);
+            const data = await response.json();
+
+            document.getElementById('balance').innerText = `Balance: ${data.balanceInSol} SOL`;
+            document.getElementById('pyusd-balance').innerText = `PYUSD Balance: ${data.pyusdBalance}`;
+            document.getElementById('credits').innerText = `Credits: ${data.credits}`;
+
+            const playButton = document.getElementById('play-button');
+            if (data.credits >= 2) {
+                playButton.disabled = false;
+            } else {
+                playButton.disabled = true;
+            }
+        }
+
+        async function createTransaction() {
+            const spinner = document.getElementById('spinner');
+            spinner.style.display = 'block';
+            const walletAddress = '<%= walletAddress %>';
+            const response = await fetch('/create-transaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ walletAddress })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                const transaction = solanaWeb3.Transaction.from(Uint8Array.from(atob(data.transaction), c => c.charCodeAt(0)));
+                const signedTransaction = await window.solana.signTransaction(transaction);
+
+                const sendResponse = await fetch('/send-transaction', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ signedTransaction: btoa(String.fromCharCode(...new Uint8Array(signedTransaction.serialize()))), walletAddress })
+                });
+
+                const sendData = await sendResponse.json();
+                spinner.style.display = 'none';
+                if (sendData.success) {
+                    alert('Transaction successful!');
+                    fetchWalletInfo(); // Refresh wallet info to update credits
+                } else {
+                    alert('Transaction failed: ' + sendData.error);
+                }
+            } else {
+                spinner.style.display = 'none';
+                alert('Failed to create transaction: ' + data.error);
+            }
+        }
+
+        async function startGame() {
+            const playButton = document.getElementById('play-button');
+            if (playButton.disabled) {
+                alert('Insufficient credits. Please add more credits to play.');
+                return;
+            }
+
+            document.getElementById('prev-button').style.display = 'none';
+            document.getElementById('next-button').style.display = 'none';
+            document.querySelector('.play-text').style.display = 'block';
+
+            const walletAddress = '<%= walletAddress %>';
+            const response = await fetch('/deduct-credits', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ walletAddress })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                fetchWalletInfo(); // Refresh wallet info to update credits
+            } else {
+                alert('Failed to deduct credits: ' + data.error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchWalletInfo();
+            setInterval(fetchWalletInfo, 3000); // Refresh wallet info every 3 seconds
+
+            document.getElementById('drop-quarter-button').addEventListener('click', function() {
+                createTransaction();
+            });
+
+            document.getElementById('play-button').addEventListener('click', function() {
+                startGame();
+            });
+
+            // Initialize carousel
+            showImage(0);
+            document.getElementById('prev-button').addEventListener('click', prevImage);
+            document.getElementById('next-button').addEventListener('click', nextImage);
+        });
+    </script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <nav class="bg-white shadow p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <a href="/" class="text-2xl font-bold">PYUSD Arcade Demo!</a>
+            </div>
+            <div>
+                <a href="/" class="text-blue-500 hover:underline mx-2">Home</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container mx-auto mt-10 content">
+        <div class="box text-center">
+            <p class="text-lg mb-4">Wallet Information</p>
+            <p class="text-lg" id="balance">Balance: <%= balanceInSol %> SOL</p>
+            <p class="text-lg" id="pyusd-balance">PYUSD Balance: <%= pyusdBalance %></p>
+            <p class="text-lg" id="credits">Credits: <%= credits %></p>
+            <button id="drop-quarter-button" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 mt-4">Add a Quarter</button>
+            <div id="spinner" class="spinner mt-4"></div>
+        </div>
+        <div class="box text-center">
+            <p class="text-lg mb-4">Play a game!</p>
+            <p class="text-lg">2 credits per play</p>
+            <button id="play-button" class="play-button bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 mt-4" disabled>Play Game</button>
+            <div class="carousel-container">
+                <div class="carousel">
+                    <img src="/img/image1.jpg" alt="Space Game">
+                    <img src="/img/image2.jpg" alt="Space Game 2">
+                    <img src="/img/image3.jpg" alt="Fighting Game">
+                    <img src="/img/image4.jpg" alt="RPG Maze">
+                    <img src="/img/image5.jpg" alt="Racing">
+                    <img src="/img/image6.jpg" alt="Military">
+                    <div class="play-text">Ready to play...</div>
+                </div>
+                <div class="carousel-buttons">
+                    <span id="prev-button" class="carousel-button">Prev</span>
+                    <span id="next-button" class="carousel-button">Next</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
