@@ -122,4 +122,7 @@ Open a web browser and navigate to `http://your-domain.com` or `http://your-serv
 
 ---
 
+### 11. Setup admin address
+
+/admin password is "pyusd demo 1"
 These steps will help you set up and deploy the PYUSD Arcade web application on a new Node.js server.

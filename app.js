@@ -3,13 +3,16 @@ const path = require('path');
 const { Connection, clusterApiUrl, PublicKey, Transaction, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferCheckedInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } = require('@solana/spl-token');
 const bodyParser = require('body-parser');
+const dotenv = require('dotenv');
+
+dotenv.config();
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 const connection = new Connection(clusterApiUrl('devnet'));
 const PYUSD_TOKEN_MINT = 'CXk2AMBfi3TwaEL2468s6zP8xq9NxTXjp9gjMgzeUynM';
-const RECIPIENT_ADDRESS = 'ARFwpM41PsUudu1HQE7i1HbbP6nkDAnKYRc77KQMS18e';
+let RECIPIENT_ADDRESS = 'ARFwpM41PsUudu1HQE7i1HbbP6nkDAnKYRc77KQMS18e';
 const TOKEN2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
 // Temporary in-memory storage for credits
@@ -62,6 +65,34 @@ app.get('/wallet', async (req, res) => {
     }
 });
 
+app.get('/admin', (req, res) => {
+    res.render('admin');
+});
+
+app.get('/admin/get-recipient', (req, res) => {
+    res.json({ recipientAddress: RECIPIENT_ADDRESS });
+});
+
+app.post('/admin/verify-password', (req, res) => {
+    const { password } = req.body;
+    if (password === 'pyusd demo 1') {
+        res.json({ success: true, recipientAddress: RECIPIENT_ADDRESS });
+    } else {
+        res.json({ success: false, error: 'Invalid password' });
+    }
+});
+
+app.post('/admin/update-recipient', (req, res) => {
+    const { recipientAddress } = req.body;
+    try {
+        RECIPIENT_ADDRESS = recipientAddress;
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error updating recipient address:', err);
+        res.status(500).json({ success: false, error: 'Error updating recipient address' });
+    }
+});
+
 app.post('/create-transaction', async (req, res) => {
     const { walletAddress } = req.body;
     if (!walletAddress) {
@@ -93,7 +124,6 @@ app.post('/create-transaction', async (req, res) => {
             feePayer: fromPublicKey
         });
 
-        // Check if fromTokenAccount exists
         const fromTokenAccountInfo = await connection.getAccountInfo(fromTokenAccountAddress);
         if (!fromTokenAccountInfo) {
             console.log('Creating fromTokenAccount...');
@@ -109,7 +139,6 @@ app.post('/create-transaction', async (req, res) => {
             );
         }
 
-        // Check if toTokenAccount exists
         const toTokenAccountInfo = await connection.getAccountInfo(toTokenAccountAddress);
         if (!toTokenAccountInfo) {
             console.log('Creating toTokenAccount...');
@@ -125,7 +154,6 @@ app.post('/create-transaction', async (req, res) => {
             );
         }
 
-        // Add the transfer checked instruction
         transaction.add(
             createTransferCheckedInstruction(
                 fromTokenAccountAddress,
@@ -167,7 +195,6 @@ app.post('/send-transaction', async (req, res) => {
         console.log('Confirming transaction...');
         await connection.confirmTransaction(signature);
 
-        // Update credits here as needed
         let credits = creditsStore[walletAddress] || 0;
         credits += 1; // Each 0.25 token transfer adds 1 credit
         creditsStore[walletAddress] = credits;
@@ -192,7 +219,6 @@ app.post('/deduct-credits', async (req, res) => {
     }
 
     try {
-        // Update credits here as needed
         let credits = creditsStore[walletAddress] || 0;
         if (credits < 2) {
             return res.status(400).json({ success: false, error: 'Insufficient credits' });
