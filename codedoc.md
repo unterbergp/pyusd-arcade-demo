@@ -1,4 +1,4 @@
-Sure, here is the documentation for the key parts of the code:
+Disclaimer: AI was used to create this code.
 
 ### `app.js` - Server-Side Code
 
